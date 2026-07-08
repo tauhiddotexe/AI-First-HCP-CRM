@@ -286,7 +286,38 @@ Performed clean-room rebuild from scratch:
 | LangGraph EditInteraction | 1 | ✅ |
 | LangGraph NextBestAction | 1 | ✅ |
 | LangGraph VisitSummary | 1 | ✅ |
+| Intent Detection Regression | 5 inputs | ✅ All routed LogInteraction |
 | DB Persistence | 4 interactions | ✅ |
+
+## Phase 11 - Bugfixes: Intent Detection Regression & Date Parsing (2026-07-08)
+
+### Issue 1: Intent Detection classified CRM messages as `general`
+**Root cause**: Three compounding weaknesses in the intent detection pipeline:
+1. **Weak prompt**: The prompt just listed examples without explicit MUST rules. The weaker fallback model (`llama-3.1-8b-instant`) frequently returned `general` for obvious `log_interaction` requests.
+2. **No output normalization**: Only `.strip().lower()` was applied. Variations like "log interaction", "LogInteraction", "LOG_INTERACTION" all fell through to `general`.
+3. **No deterministic fallback**: When the LLM returned an invalid label, the code blindly fell back to `general` instead of checking the message for CRM keywords.
+
+**Files modified**:
+- `backend/app/graph/nodes/intent_detection.py` — Rewrote prompt with priority-ordered rules (Rule 1: "log this" → `log_interaction` before Rule 7: `general`), added `_normalize_intent()` to handle all casing/formatting variations, added `_intent_from_keywords()` as deterministic fallback using CRM signal words
+- `backend/app/agents/groq_client.py` — No changes needed (rate limit fallback was already fixed)
+
+**Verification**: All 5 regression test inputs routed `IntentDetection → EntityExtraction → ToolRouter → LogInteraction`. Logs show `IntentDetection | raw=log_interaction normalized=log_interaction`.
+
+### Issue 2: `date.fromisoformat('yesterday')` crash
+**Root cause**: The fallback LLM model frequently extracted relative dates like "yesterday", "today" instead of ISO dates. `date.fromisoformat()` raises `ValueError` for non-ISO strings. Same bug existed in `edit_interaction.py` and `log_interaction.py` followup date handling.
+
+**Files modified**:
+- `backend/app/tools/log_interaction.py:38-46` — Wrapped `date.fromisoformat()` in try/except, falling back to `date.today()`
+- `backend/app/tools/log_interaction.py:94-97` — Same fix for follow_up_date
+- `backend/app/tools/edit_interaction.py:40-45` — Same fix for edit date
+
+### Issue 3: `Object of type date is not JSON serializable`
+**Root cause**: The fix for Issue 2 changed `interaction_date` from a string (`.isoformat()`) to a `date` object, but the tool result dict included `'date': interaction_date` which `json.dumps()` can't serialize.
+
+**Files modified**:
+- `backend/app/tools/log_interaction.py:111` — Changed `interaction_date` → `interaction_date.isoformat()` in return dict
+
+**Verification**: Full E2E test with seeded HCP returns `INTERACTION_ID`, 200 OK, interaction persisted in PostgreSQL. All 5 intent detection inputs: ✅.
 
 ## Ready for Submission
 - ✅ Clean rebuild from scratch verified

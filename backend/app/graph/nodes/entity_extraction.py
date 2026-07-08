@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from langchain_core.messages import SystemMessage, HumanMessage
-from app.agents.groq_client import get_llm, get_fallback_llm
+from app.agents.groq_client import ainvoke_with_fallback
 from app.graph.state import GraphState
 
 logger = logging.getLogger('uvicorn.error')
@@ -16,7 +16,6 @@ def _load_prompt(filename: str) -> str:
 
 
 async def entity_extraction_node(state: GraphState) -> dict:
-    llm = get_llm()
     system_prompt = _load_prompt('system_prompt.txt')
     intent = state.get('intent', 'log_interaction')
 
@@ -56,7 +55,7 @@ User message: {state['user_input']}
 
 JSON output:"""
 
-    response = await llm.ainvoke([
+    response = await ainvoke_with_fallback([
         SystemMessage(content=system_prompt),
         HumanMessage(content=prompt),
     ])

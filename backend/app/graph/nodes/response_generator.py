@@ -1,7 +1,7 @@
 import json
 import os
 from langchain_core.messages import SystemMessage, HumanMessage
-from app.agents.groq_client import get_llm
+from app.agents.groq_client import ainvoke_with_fallback
 from app.graph.state import GraphState
 
 
@@ -13,7 +13,6 @@ def _load_prompt(filename: str) -> str:
 
 
 async def response_generator_node(state: GraphState) -> dict:
-    llm = get_llm()
     system_prompt = _load_prompt('system_prompt.txt')
     tool = state.get('selected_tool', '')
     result = state.get('tool_result', {})
@@ -36,7 +35,7 @@ Keep it concise (2-3 sentences). Mention what was extracted or updated.
 
 Response:"""
 
-    response = await llm.ainvoke([
+    response = await ainvoke_with_fallback([
         SystemMessage(content=system_prompt),
         HumanMessage(content=prompt),
     ])

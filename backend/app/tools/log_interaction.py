@@ -35,15 +35,20 @@ async def execute_log_interaction(
     if not matched_hcp:
         return {'error': f'HCP "{hcp_name}" not found. Please ask the user to select from the HCP list.'}
 
-    interaction_date = entities.get('date')
-    if not interaction_date:
-        interaction_date = date.today().isoformat()
+    raw_date = entities.get('date')
+    if not raw_date:
+        interaction_date = date.today()
+    else:
+        try:
+            interaction_date = date.fromisoformat(raw_date)
+        except (ValueError, TypeError):
+            interaction_date = date.today()
 
     interaction = Interaction(
         hcp_id=matched_hcp.id,
         user_id=user_id,
         interaction_type=entities.get('interaction_type', 'Face-to-Face'),
-        interaction_date=date.fromisoformat(interaction_date),
+        interaction_date=interaction_date,
         summary=entities.get('summary', ''),
         sentiment=entities.get('sentiment'),
         outcome=entities.get('outcome'),
@@ -86,7 +91,10 @@ async def execute_log_interaction(
     for fu in (entities.get('follow_up_actions') or []):
         fu_date = None
         if fu.get('follow_up_date'):
-            fu_date = date.fromisoformat(fu['follow_up_date'])
+            try:
+                fu_date = date.fromisoformat(fu['follow_up_date'])
+            except (ValueError, TypeError):
+                fu_date = None
         session.add(FollowUp(
             interaction_id=interaction.id,
             action=fu.get('action', ''),
@@ -100,7 +108,7 @@ async def execute_log_interaction(
     return {
         'interaction_id': interaction.id,
         'hcp': f'{matched_hcp.first_name} {matched_hcp.last_name}',
-        'date': interaction_date,
+        'date': interaction_date.isoformat(),
         'type': interaction.interaction_type,
         'sentiment': interaction.sentiment,
         'status': 'created',

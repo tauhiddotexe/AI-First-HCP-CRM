@@ -37,8 +37,12 @@ async def execute_edit_interaction(
     interaction_id = str(interaction.id)
     updates = {}
 
-    if entities.get('date'):
-        updates['interaction_date'] = date.fromisoformat(entities['date'])
+    raw_date = entities.get('date')
+    if raw_date:
+        try:
+            updates['interaction_date'] = date.fromisoformat(raw_date)
+        except (ValueError, TypeError):
+            pass
     if entities.get('interaction_type'):
         updates['interaction_type'] = entities['interaction_type']
     if entities.get('sentiment'):
