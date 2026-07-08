@@ -28,14 +28,17 @@ async def entity_extraction_node(state: GraphState) -> dict:
         'generate_summary': 'Extract the HCP name and visit context for summarization',
     }.get(intent, 'Extract any relevant HCP information from this message')
 
-    prompt = f"""{intent_instructions}
+    # Inject conversation context for follow-up turns
+    last_hcp = state.get('metadata', {}).get('last_hcp_name', '')
+    context_hint = f' If the message refers to a previously mentioned HCP without naming them, use "{last_hcp}".' if last_hcp else ''
+    prompt = f"""{intent_instructions}{context_hint}
 
 Output ONLY a valid JSON object. Include any fields you can extract from the message. Set unknown fields to null.
 
 ALWAYS use arrays for list fields (discussion_topics, products_discussed, etc.), never strings.
 
 Available fields (use only those relevant):
-- "hcp_name": "Full name (e.g., Dr. Sarah Patel)"
+- "hcp_name": "Full name of the doctor (extract exactly what the user says; never invent a name)"
 - "hcp_hospital": "Hospital or clinic name"
 - "interaction_type": "Face-to-Face, Virtual, Phone Call, Email, Group Meeting, or Conference"
 - "date": "YYYY-MM-DD format"

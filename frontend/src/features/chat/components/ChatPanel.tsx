@@ -18,6 +18,8 @@ export function ChatPanel({ interactionId }: ChatPanelProps) {
   const { messages, isProcessing, lastResponse } = useAppSelector((s) => s.chat)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [showPrompts, setShowPrompts] = useState(true)
+  const [lastHcpName, setLastHcpName] = useState<string | null>(null)
+  const [lastInteractionId, setLastInteractionId] = useState<string | null>(null)
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -26,7 +28,17 @@ export function ChatPanel({ interactionId }: ChatPanelProps) {
   }, [messages])
 
   useEffect(() => {
-    const form = lastResponse?.updated_form
+    if (!lastResponse) return
+
+    const form = lastResponse.updated_form
+
+    if (lastResponse.interaction_id) {
+      setLastInteractionId(lastResponse.interaction_id)
+    }
+    if (form?.hcp_name) {
+      setLastHcpName(form.hcp_name as string)
+    }
+
     if (form && Object.keys(form).length > 0) {
       dispatch(updateFormFromAI(form))
       const updatedFields = Object.keys(form).filter((k) => form[k as keyof typeof form] != null)
@@ -47,7 +59,11 @@ export function ChatPanel({ interactionId }: ChatPanelProps) {
     }))
     setShowPrompts(false)
     try {
-      await dispatch(sendMessage({ message, interaction_id: interactionId })).unwrap()
+      await dispatch(sendMessage({
+        message,
+        interaction_id: interactionId || lastInteractionId,
+        last_hcp_name: lastHcpName,
+      })).unwrap()
     } catch (err) {
       const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : JSON.stringify(err)
       dispatch(addMessage({

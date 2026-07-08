@@ -94,6 +94,7 @@ export interface ChatMessage {
 export interface AgentChatRequest {
   message: string
   interaction_id?: string | null
+  last_hcp_name?: string | null
 }
 
 export interface AgentChatResponse {

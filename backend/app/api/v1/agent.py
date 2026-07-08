@@ -35,6 +35,7 @@ def sanitize_llm_output(text: str) -> str:
 class ChatRequest(BaseModel):
     message: str = Field(description='User message to the agent', min_length=1, max_length=4000)
     interaction_id: str | None = Field(default=None, description='Optional interaction UUID')
+    last_hcp_name: str | None = Field(default=None, description='HCP name from previous turn for conversation context')
 
 
 class ChatResponse(BaseModel):
@@ -63,7 +64,10 @@ async def agent_chat(
         'tool_result': {},
         'assistant_response': '',
         'errors': [],
-        'metadata': {'interaction_id': request.interaction_id or ''},
+        'metadata': {
+            'interaction_id': request.interaction_id or '',
+            'last_hcp_name': request.last_hcp_name or '',
+        },
     }
 
     result = await agent_graph.ainvoke(initial_state)
@@ -83,9 +87,10 @@ async def agent_chat(
 
     updated_form = {}
     if tool_name and tool_name != 'GeneralChat' and 'error' not in tool_data:
+        hcp_name = entities.get('hcp_name')
         if tool_name == 'LogInteraction':
             updated_form = {
-                'hcp_name': entities.get('hcp_name'),
+                'hcp_name': hcp_name,
                 'interaction_type': entities.get('interaction_type'),
                 'date': entities.get('date'),
                 'sentiment': entities.get('sentiment'),
@@ -93,6 +98,8 @@ async def agent_chat(
                 'discussion_topics': entities.get('discussion_topics'),
                 'products_discussed': entities.get('products_discussed'),
             }
+        elif hcp_name:
+            updated_form['hcp_name'] = hcp_name
 
     raw_response = result.get('assistant_response', 'I processed your request.')
     safe_response = sanitize_llm_output(raw_response)

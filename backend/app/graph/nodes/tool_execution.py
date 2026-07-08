@@ -45,7 +45,13 @@ async def tool_execution_node(
 ) -> dict:
     tool = state.get('selected_tool', '')
     entities = state.get('entities', {})
+    metadata = state.get('metadata', {})
     errors = state.get('errors') or []
+
+    if not entities.get('hcp_name'):
+        last_hcp = metadata.get('last_hcp_name', '')
+        if last_hcp:
+            entities['hcp_name'] = last_hcp
 
     if not tool or tool == 'GeneralChat':
         return {'tool_result': {'message': 'General conversation - no tool needed'}}
