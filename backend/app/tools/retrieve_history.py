@@ -23,7 +23,7 @@ async def execute_retrieve_history(
             Interaction.hcp_id == hcp.id,
             Interaction.deleted_at.is_(None),
         )
-        .order_by(Interaction.interaction_date.desc())
+        .order_by(Interaction.interaction_date.desc(), Interaction.created_at.desc())
         .limit(limit)
     )
     interactions = interactions_result.scalars().all()

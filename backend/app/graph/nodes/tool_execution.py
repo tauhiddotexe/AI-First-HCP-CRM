@@ -22,7 +22,7 @@ async def _fetch_hcp_interactions(session: AsyncSession, hcp_name: str, limit: i
     result = await session.execute(
         select(Interaction)
         .where(Interaction.hcp_id == hcp.id, Interaction.deleted_at.is_(None))
-        .order_by(desc(Interaction.interaction_date))
+        .order_by(desc(Interaction.interaction_date), desc(Interaction.created_at))
         .limit(limit)
     )
     return [

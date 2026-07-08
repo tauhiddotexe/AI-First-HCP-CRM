@@ -18,24 +18,17 @@ class HCPRepository(BaseRepository[HCP]):
         result = await self.session.execute(stmt)
         hcps = list(result.scalars().all())
 
-        # Prefer exact match on both names
         if first_name and last_name:
             for hcp in hcps:
                 if first_name == hcp.first_name.lower() and last_name == hcp.last_name.lower():
                     return hcp
-            for hcp in hcps:
-                if first_name in hcp.first_name.lower() and last_name in hcp.last_name.lower():
-                    return hcp
+            return None
 
-        # Single-word match (last name only)
         word = last_name or first_name
         if word:
-            for hcp in hcps:
-                if word == hcp.last_name.lower():
-                    return hcp
-            for hcp in hcps:
-                if word in hcp.last_name.lower():
-                    return hcp
+            matching = [h for h in hcps if word == h.last_name.lower()]
+            if len(matching) == 1:
+                return matching[0]
 
         return None
 

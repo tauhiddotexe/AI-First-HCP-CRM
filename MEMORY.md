@@ -289,35 +289,66 @@ Performed clean-room rebuild from scratch:
 | Intent Detection Regression | 5 inputs | ✅ All routed LogInteraction |
 | DB Persistence | 4 interactions | ✅ |
 
-## Phase 11 - Bugfixes: Intent Detection Regression & Date Parsing (2026-07-08)
+## Phase 11 - Bugfixes: Intent Detection, HCP Resolution, Edit Response, Visit Ordering (2026-07-08)
 
-### Issue 1: Intent Detection classified CRM messages as `general`
+### Bug 1: Intent Detection classified CRM messages as `general`
 **Root cause**: Three compounding weaknesses in the intent detection pipeline:
 1. **Weak prompt**: The prompt just listed examples without explicit MUST rules. The weaker fallback model (`llama-3.1-8b-instant`) frequently returned `general` for obvious `log_interaction` requests.
 2. **No output normalization**: Only `.strip().lower()` was applied. Variations like "log interaction", "LogInteraction", "LOG_INTERACTION" all fell through to `general`.
 3. **No deterministic fallback**: When the LLM returned an invalid label, the code blindly fell back to `general` instead of checking the message for CRM keywords.
 
 **Files modified**:
-- `backend/app/graph/nodes/intent_detection.py` — Rewrote prompt with priority-ordered rules (Rule 1: "log this" → `log_interaction` before Rule 7: `general`), added `_normalize_intent()` to handle all casing/formatting variations, added `_intent_from_keywords()` as deterministic fallback using CRM signal words
-- `backend/app/agents/groq_client.py` — No changes needed (rate limit fallback was already fixed)
+- `backend/app/graph/nodes/intent_detection.py` — Rewrote prompt with priority-ordered rules, added `_normalize_intent()`, added `_intent_from_keywords()` deterministic fallback
 
-**Verification**: All 5 regression test inputs routed `IntentDetection → EntityExtraction → ToolRouter → LogInteraction`. Logs show `IntentDetection | raw=log_interaction normalized=log_interaction`.
+**Verification**: All regression inputs → correct intent. Logs show `normalized=log_interaction`.
 
-### Issue 2: `date.fromisoformat('yesterday')` crash
-**Root cause**: The fallback LLM model frequently extracted relative dates like "yesterday", "today" instead of ISO dates. `date.fromisoformat()` raises `ValueError` for non-ISO strings. Same bug existed in `edit_interaction.py` and `log_interaction.py` followup date handling.
-
-**Files modified**:
-- `backend/app/tools/log_interaction.py:38-46` — Wrapped `date.fromisoformat()` in try/except, falling back to `date.today()`
-- `backend/app/tools/log_interaction.py:94-97` — Same fix for follow_up_date
-- `backend/app/tools/edit_interaction.py:40-45` — Same fix for edit date
-
-### Issue 3: `Object of type date is not JSON serializable`
-**Root cause**: The fix for Issue 2 changed `interaction_date` from a string (`.isoformat()`) to a `date` object, but the tool result dict included `'date': interaction_date` which `json.dumps()` can't serialize.
+### Bug 2: `date.fromisoformat('yesterday')` crash
+**Root cause**: Fallback LLM extracted relative dates. `date.fromisoformat()` raises `ValueError` for non-ISO strings.
 
 **Files modified**:
-- `backend/app/tools/log_interaction.py:111` — Changed `interaction_date` → `interaction_date.isoformat()` in return dict
+- `backend/app/tools/log_interaction.py:38-46` — try/except on `fromisoformat`
+- `backend/app/tools/log_interaction.py:94-97` — Same for follow_up_date
+- `backend/app/tools/edit_interaction.py:40-45` — Same for edit date
 
-**Verification**: Full E2E test with seeded HCP returns `INTERACTION_ID`, 200 OK, interaction persisted in PostgreSQL. All 5 intent detection inputs: ✅.
+### Bug 3: `Object of type date is not JSON serializable`
+**Root cause**: `interaction_date` changed from string to `date` object but return dict included raw object.
+
+**Files modified**:
+- `backend/app/tools/log_interaction.py:111` — `interaction_date` → `interaction_date.isoformat()`
+
+### Bug 4: Incorrect HCP Resolution — `find_by_name` silently substituted HCPs (Highest Priority)
+**Root cause**: When both first and last name were provided (e.g., "Rajesh Gupta") and no exact match existed, `find_by_name` fell through to surname-only matching (`"gupta" == hcp.last_name.lower()`), returning the first surname match found (Priya Gupta) instead of returning "HCP not found". This affected all 5 LangGraph tools that use HCP resolution.
+
+**Files modified**:
+- `backend/app/repositories/hcp.py` — Removed surname-only fallthrough when both names are provided. If both names are given and no exact match, return `None` immediately. Single-name inputs (e.g., "Dr. Gupta") still match by surname.
+
+**Verification**: "Dr. Rajesh Gupta" → `None` (HCP not found). "Dr. Priya Gupta" → Priya Gupta. "Dr. Sarah Patel" → Sarah Patel.
+
+### Bug 5: EditInteraction Response Missing HCP Name
+**Root cause**: `execute_edit_interaction` return dict had no `hcp_name` field. The `response_generator` node received `{'interaction_id': ..., 'updated_fields': [...], 'status': 'updated'}` — no HCP name to include in the LLM prompt.
+
+**Files modified**:
+- `backend/app/tools/edit_interaction.py:58-64` — Added HCP name resolution from interaction's HCP relationship, included `hcp_name` in return dict
+
+**Verification**: EditInteraction response contains actual HCP name (e.g., "Dr. Rajesh Shah"), not placeholder.
+
+### Bug 6: VisitSummary / RetrieveHistory Non-deterministic Ordering
+**Root cause**: `_fetch_hcp_interactions` and `retrieve_history.py` ordered only by `interaction_date DESC`. Multiple interactions on the same date had undefined secondary ordering, causing the wrong interaction to be selected for summarization.
+
+**Files modified**:
+- `backend/app/graph/nodes/tool_execution.py:25` — Added `desc(Interaction.created_at)` as secondary sort
+- `backend/app/tools/retrieve_history.py:26` — Same secondary sort
+
+**Verification**: VisitSummary selects the most recently created interaction among same-date records.
+
+## 5-Step Verification Conversation (All Passed)
+| Step | Intent | Tool | HCP Resolved | DB Persisted |
+|------|--------|------|-------------|-------------|
+| 1. Log interaction with Dr. Rajesh Shah | `log_interaction` | LogInteraction | Dr. Rajesh Shah | ✅ (ID created) |
+| 2. Show history for Dr. Rajesh Shah | `retrieve_history` | RetrieveHistory | Dr. Rajesh Shah | N/A |
+| 3. Update latest interaction | `edit_interaction` | EditInteraction | Dr. Rajesh Shah (in response) | ✅ |
+| 4. Next best action | `suggest_action` | NextBestAction | Dr. Rajesh Shah | N/A |
+| 5. Generate visit summary | `generate_summary` | VisitSummary | Dr. Rajesh Shah | ✅ correct interaction |
 
 ## Ready for Submission
 - ✅ Clean rebuild from scratch verified

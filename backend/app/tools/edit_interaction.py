@@ -1,6 +1,7 @@
 from datetime import date
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.models.hcp import HCP
 from app.models.interaction import Interaction
 from app.repositories.interaction import InteractionRepository
 from app.repositories.hcp import HCPRepository
@@ -37,6 +38,10 @@ async def execute_edit_interaction(
     interaction_id = str(interaction.id)
     updates = {}
 
+    hcp_resolved = await session.execute(select(HCP).where(HCP.id == interaction.hcp_id))
+    hcp_obj = hcp_resolved.scalar_one_or_none()
+    hcp_name_resolved = f'Dr. {hcp_obj.first_name} {hcp_obj.last_name}' if hcp_obj else ''
+
     raw_date = entities.get('date')
     if raw_date:
         try:
@@ -61,4 +66,5 @@ async def execute_edit_interaction(
         'interaction_id': interaction_id,
         'updated_fields': list(updates.keys()),
         'status': 'updated',
+        'hcp_name': hcp_name_resolved,
     }
