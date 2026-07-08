@@ -33,6 +33,13 @@ crm_postgres_data/
 # TypeScript build info
 *.tsbuildinfo
 
+# Agent artifacts (not part of project)
+docs/
+agents.md
+memory.md
+tasks.md
+agent-instructions.md
+
 # Logs
 *.log
 logs/
