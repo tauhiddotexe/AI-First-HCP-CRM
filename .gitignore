@@ -35,10 +35,13 @@ crm_postgres_data/
 
 # Agent artifacts (not part of project)
 docs/
-agents.md
-memory.md
-tasks.md
+[Aa]gents.md
+[Mm]emory.md
+[Tt]asks.md
 agent-instructions.md
+AGENTS.md
+MEMORY.md
+TASKS.md
 
 # Logs
 *.log
