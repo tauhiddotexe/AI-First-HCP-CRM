@@ -1,0 +1,38 @@
+# Sensitive / secrets
+.env
+backend/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+backend/crm.db
+
+# Node
+node_modules/
+frontend/dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Agent tools (not part of project)
+.agents/
+
+# Docker volume data
+crm_postgres_data/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Logs
+*.log
+logs/

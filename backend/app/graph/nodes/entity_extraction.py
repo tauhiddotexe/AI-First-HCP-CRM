@@ -1,0 +1,68 @@
+import json
+import logging
+import os
+from langchain_core.messages import SystemMessage, HumanMessage
+from app.agents.groq_client import get_llm, get_fallback_llm
+from app.graph.state import GraphState
+
+logger = logging.getLogger('uvicorn.error')
+
+
+def _load_prompt(filename: str) -> str:
+    base = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(base, '..', '..', 'prompts', filename)
+    with open(path) as f:
+        return f.read()
+
+
+async def entity_extraction_node(state: GraphState) -> dict:
+    llm = get_llm()
+    system_prompt = _load_prompt('system_prompt.txt')
+    intent = state.get('intent', 'log_interaction')
+
+    intent_instructions = {
+        'log_interaction': 'Extract all HCP interaction details from this message',
+        'edit_interaction': 'Extract the HCP name and the fields the user wants to change',
+        'retrieve_history': 'Extract the HCP name the user is asking about',
+        'suggest_action': 'Extract the HCP name and any context for next steps',
+        'generate_summary': 'Extract the HCP name and visit context for summarization',
+    }.get(intent, 'Extract any relevant HCP information from this message')
+
+    prompt = f"""{intent_instructions}
+
+Output ONLY a valid JSON object. Include any fields you can extract from the message. Set unknown fields to null.
+
+Common fields:
+- "hcp_name": "Full name of the doctor/healthcare professional (e.g., Dr. Sarah Patel)"
+- "hcp_hospital": "Hospital or clinic name"
+- "interaction_type": "Face-to-Face, Virtual, Phone Call, Email, Group Meeting, or Conference"
+- "date": "YYYY-MM-DD format"
+- "sentiment": "Positive, Neutral, Negative, Very Positive, or Concerned"
+- "summary": "A concise summary"
+- "outcome": "Interested, Committed to Prescribe, Requested More Info, Not Interested, or Deferred Decision"
+
+User message: {state['user_input']}
+
+JSON output:"""
+
+    response = await llm.ainvoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=prompt),
+    ])
+    content = response.content.strip()
+
+    if content.startswith('```json'):
+        content = content[7:]
+    if content.startswith('```'):
+        content = content[3:]
+    if content.endswith('```'):
+        content = content[:-3]
+
+    try:
+        entities = json.loads(content)
+    except json.JSONDecodeError:
+        logger.error('Entity extraction JSON parse failed. Raw: %s', content[:500])
+        entities = {'error': 'Failed to parse extraction', 'raw': content}
+
+    logger.info('Extracted entities: %s', json.dumps(entities, default=str)[:500])
+    return {'entities': entities}
