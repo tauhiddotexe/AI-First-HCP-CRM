@@ -32,14 +32,22 @@ async def entity_extraction_node(state: GraphState) -> dict:
 
 Output ONLY a valid JSON object. Include any fields you can extract from the message. Set unknown fields to null.
 
-Common fields:
-- "hcp_name": "Full name of the doctor/healthcare professional (e.g., Dr. Sarah Patel)"
+ALWAYS use arrays for list fields (discussion_topics, products_discussed, etc.), never strings.
+
+Available fields (use only those relevant):
+- "hcp_name": "Full name (e.g., Dr. Sarah Patel)"
 - "hcp_hospital": "Hospital or clinic name"
 - "interaction_type": "Face-to-Face, Virtual, Phone Call, Email, Group Meeting, or Conference"
 - "date": "YYYY-MM-DD format"
+- "time": "HH:MM in 24-hour format"
+- "discussion_topics": ["array of topic strings"]
+- "products_discussed": ["array of product name strings"]
+- "materials_shared": [{{"material_name": "name", "quantity": number}}]
+- "samples_distributed": [{{"product_name": "name", "quantity": number}}]
 - "sentiment": "Positive, Neutral, Negative, Very Positive, or Concerned"
-- "summary": "A concise summary"
 - "outcome": "Interested, Committed to Prescribe, Requested More Info, Not Interested, or Deferred Decision"
+- "follow_up_actions": [{{"action": "description", "follow_up_date": "YYYY-MM-DD or null"}}]
+- "summary": "A concise 2-3 sentence summary"
 
 User message: {state['user_input']}
 

@@ -18,6 +18,7 @@ async def _fetch_hcp_interactions(session: AsyncSession, hcp_name: str, limit: i
     hcp = await HCPRepository(session).find_by_name(hcp_name)
     if not hcp:
         return []
+    hcp_full_name = f'{hcp.first_name} {hcp.last_name}'
     result = await session.execute(
         select(Interaction)
         .where(Interaction.hcp_id == hcp.id, Interaction.deleted_at.is_(None))
@@ -27,6 +28,7 @@ async def _fetch_hcp_interactions(session: AsyncSession, hcp_name: str, limit: i
     return [
         {
             'id': str(ix.id),
+            'hcp': hcp_full_name,
             'date': ix.interaction_date.isoformat() if ix.interaction_date else '',
             'type': ix.interaction_type,
             'summary': ix.summary or '',

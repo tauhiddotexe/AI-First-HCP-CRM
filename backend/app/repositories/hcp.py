@@ -11,16 +11,32 @@ class HCPRepository(BaseRepository[HCP]):
     async def find_by_name(self, name: str) -> HCP | None:
         cleaned = name.replace('Dr. ', '').replace('Dr ', '').strip()
         parts = cleaned.split(' ', 1)
-        first_name = parts[0] if parts else ''
-        last_name = parts[1] if len(parts) > 1 else ''
+        first_name = parts[0].lower() if parts else ''
+        last_name = parts[1].lower() if len(parts) > 1 else ''
 
         stmt = select(HCP).where(HCP.deleted_at.is_(None))
         result = await self.session.execute(stmt)
         hcps = list(result.scalars().all())
 
-        for hcp in hcps:
-            if first_name.lower() in hcp.first_name.lower() or last_name.lower() in hcp.last_name.lower():
-                return hcp
+        # Prefer exact match on both names
+        if first_name and last_name:
+            for hcp in hcps:
+                if first_name == hcp.first_name.lower() and last_name == hcp.last_name.lower():
+                    return hcp
+            for hcp in hcps:
+                if first_name in hcp.first_name.lower() and last_name in hcp.last_name.lower():
+                    return hcp
+
+        # Single-word match (last name only)
+        word = last_name or first_name
+        if word:
+            for hcp in hcps:
+                if word == hcp.last_name.lower():
+                    return hcp
+            for hcp in hcps:
+                if word in hcp.last_name.lower():
+                    return hcp
+
         return None
 
     async def search(self, query: str) -> list[HCP]:
