@@ -8,15 +8,20 @@ class HCPRepository(BaseRepository[HCP]):
     def __init__(self, session: AsyncSession):
         super().__init__(session, HCP)
 
-    async def find_by_name(self, name: str) -> HCP | None:
+    async def _parse_name(self, name: str) -> tuple[str, str]:
         cleaned = name.replace('Dr. ', '').replace('Dr ', '').strip()
         parts = cleaned.split(' ', 1)
-        first_name = parts[0].lower() if parts else ''
-        last_name = parts[1].lower() if len(parts) > 1 else ''
+        if len(parts) == 1:
+            return '', parts[0].lower()
+        return (parts[0].lower() if parts else ''), (parts[1].lower() if len(parts) > 1 else '')
 
-        stmt = select(HCP).where(HCP.deleted_at.is_(None))
-        result = await self.session.execute(stmt)
-        hcps = list(result.scalars().all())
+    async def _load_all(self) -> list[HCP]:
+        result = await self.session.execute(select(HCP).where(HCP.deleted_at.is_(None)))
+        return list(result.scalars().all())
+
+    async def find_by_name(self, name: str) -> HCP | None:
+        first_name, last_name = await self._parse_name(name)
+        hcps = await self._load_all()
 
         if first_name and last_name:
             for hcp in hcps:
@@ -31,6 +36,29 @@ class HCPRepository(BaseRepository[HCP]):
                 return matching[0]
 
         return None
+
+    async def find_all_by_name(self, name: str) -> list[HCP]:
+        first_name, last_name = await self._parse_name(name)
+        hcps = await self._load_all()
+
+        if first_name and last_name:
+            exact = [h for h in hcps if first_name == h.first_name.lower() and last_name == h.last_name.lower()]
+            if exact:
+                return exact
+
+        if last_name:
+            by_last = [h for h in hcps if last_name == h.last_name.lower()]
+            if by_last:
+                return by_last
+            return [h for h in hcps if last_name == h.first_name.lower()]
+
+        if first_name:
+            by_first = [h for h in hcps if first_name == h.first_name.lower()]
+            if by_first:
+                return by_first
+            return [h for h in hcps if first_name == h.last_name.lower()]
+
+        return []
 
     async def search(self, query: str) -> list[HCP]:
         pattern = f'%{query}%'

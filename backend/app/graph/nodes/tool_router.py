@@ -7,6 +7,7 @@ TOOL_MAP = {
     'retrieve_history': 'RetrieveHistory',
     'suggest_action': 'NextBestAction',
     'generate_summary': 'VisitSummary',
+    'create_hcp': 'CreateHCP',
     'general': 'GeneralChat',
 }
 
