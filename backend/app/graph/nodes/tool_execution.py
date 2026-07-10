@@ -10,6 +10,7 @@ from app.tools.edit_interaction import execute_edit_interaction
 from app.tools.retrieve_history import execute_retrieve_history
 from app.tools.suggest_next_action import execute_suggest_next_action
 from app.tools.generate_summary import execute_generate_summary
+from app.tools.create_hcp import execute_create_hcp
 
 
 async def _fetch_hcp_interactions(session: AsyncSession, hcp_name: str, limit: int = 10) -> list:
@@ -59,6 +60,14 @@ async def tool_execution_node(
     try:
         if tool == 'LogInteraction':
             result = await execute_log_interaction(session, entities, user_id)
+            if result.get('error') and 'not found' in result.get('error', ''):
+                create_result = await execute_create_hcp(session, entities)
+                if 'error' not in create_result:
+                    result = await execute_log_interaction(session, entities, user_id)
+                    result['hcp_created'] = True
+                    result['created_hcp_name'] = create_result.get('hcp_name', entities.get('hcp_name', ''))
+        elif tool == 'CreateHCP':
+            result = await execute_create_hcp(session, entities)
         elif tool == 'EditInteraction':
             interaction_id = state.get('metadata', {}).get('interaction_id', '')
             result = await execute_edit_interaction(session, interaction_id, entities)
@@ -71,9 +80,7 @@ async def tool_execution_node(
             result = await execute_suggest_next_action(history=history)
         elif tool == 'VisitSummary':
             hcp_name = entities.get('hcp_name', '')
-            history = await _fetch_hcp_interactions(session, hcp_name)
-            interaction = history[0] if history else {}
-            result = await execute_generate_summary(interaction=interaction, history=history)
+            result = await execute_generate_summary(session=session, hcp_name=hcp_name)
         else:
             result = {'message': f'Unknown tool: {tool}'}
 

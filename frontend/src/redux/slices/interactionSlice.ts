@@ -51,22 +51,34 @@ const interactionSlice = createSlice({
         hcp_name: 'hcp_name',
         interaction_type: 'interaction_type',
         date: 'interaction_date',
+        time: 'interaction_time',
         sentiment: 'sentiment',
         summary: 'summary',
         outcome: 'outcome',
+        attendees: 'attendees',
         discussion_topics: 'discussion_topics',
         products_discussed: 'products_discussed',
         materials_shared: 'materials_shared',
         samples_distributed: 'samples_distributed',
+        follow_up_actions: 'follow_ups',
       }
 
+      const normalized = { ...current } as Record<string, unknown>
+
       for (const [aiField, stateField] of Object.entries(fieldMap)) {
-        if (aiData[aiField] != null) {
-          (current as Record<string, unknown>)[stateField] = aiData[aiField]
+        const value = aiData[aiField]
+        if (value != null) {
+          if (aiField === 'discussion_topics' && Array.isArray(value)) {
+            normalized[stateField] = value.map((t: unknown) => typeof t === 'string' ? { topic: t } : t)
+          } else if (aiField === 'products_discussed' && Array.isArray(value)) {
+            normalized[stateField] = value.map((p: unknown) => typeof p === 'string' ? { product_name: p } : p)
+          } else {
+            normalized[stateField] = value
+          }
         }
       }
 
-      state.current = current
+      state.current = normalized as typeof state.current
     },
     updateFormField(state, action) {
       const { field, value } = action.payload

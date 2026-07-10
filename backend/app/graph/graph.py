@@ -6,7 +6,7 @@ from app.graph.nodes.tool_router import tool_router_node
 from app.graph.nodes.response_generator import response_generator_node
 
 
-CRM_INTENTS = {'log_interaction', 'edit_interaction', 'retrieve_history', 'suggest_action', 'generate_summary'}
+CRM_INTENTS = {'log_interaction', 'edit_interaction', 'retrieve_history', 'suggest_action', 'generate_summary', 'create_hcp'}
 
 
 def should_extract(state: GraphState) -> str:

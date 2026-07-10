@@ -1,7 +1,9 @@
 import re
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from app.schemas.common import SuccessResponse
 from app.graph.graph import agent_graph
 from app.graph.state import GraphState
@@ -9,6 +11,48 @@ from app.database.session import get_session
 from app.core.dependencies import get_current_user_id
 from app.graph.nodes.tool_execution import tool_execution_node
 from app.graph.nodes.response_generator import response_generator_node
+from app.models.interaction import Interaction
+
+
+async def _fetch_form_data(session: AsyncSession, interaction_id: str) -> dict:
+    if not interaction_id:
+        return {}
+    result = await session.execute(
+        select(Interaction)
+        .options(
+            selectinload(Interaction.discussion_topics),
+            selectinload(Interaction.products_discussed),
+            selectinload(Interaction.materials_shared),
+            selectinload(Interaction.samples_distributed),
+            selectinload(Interaction.follow_ups),
+            selectinload(Interaction.hcp),
+        )
+        .where(Interaction.id == interaction_id, Interaction.deleted_at.is_(None))
+    )
+    ix = result.scalar_one_or_none()
+    if not ix:
+        return {}
+    return {
+        'hcp_name': f'{ix.hcp.first_name} {ix.hcp.last_name}' if ix.hcp else None,
+        'interaction_type': ix.interaction_type,
+        'date': ix.interaction_date.isoformat() if ix.interaction_date else None,
+        'time': ix.interaction_time.strftime('%H:%M') if ix.interaction_time else None,
+        'summary': ix.summary,
+        'sentiment': ix.sentiment,
+        'outcome': ix.outcome,
+        'discussion_topics': [dt.topic for dt in ix.discussion_topics],
+        'products_discussed': [pd.product_name for pd in ix.products_discussed],
+        'materials_shared': [{'material_name': ms.material_name, 'quantity': ms.quantity} for ms in ix.materials_shared],
+        'samples_distributed': [{'product_name': sd.product_name, 'quantity': sd.quantity} for sd in ix.samples_distributed],
+        'follow_up_actions': [
+            {
+                'action': fu.action,
+                'follow_up_date': fu.follow_up_date.isoformat() if fu.follow_up_date else None,
+                'status': fu.status,
+            }
+            for fu in ix.follow_ups
+        ],
+    }
 
 router = APIRouter(prefix='/agent', tags=['Agent'])
 
@@ -87,19 +131,21 @@ async def agent_chat(
 
     updated_form = {}
     if tool_name and tool_name != 'GeneralChat' and 'error' not in tool_data:
-        hcp_name = entities.get('hcp_name')
-        if tool_name == 'LogInteraction':
-            updated_form = {
-                'hcp_name': hcp_name,
-                'interaction_type': entities.get('interaction_type'),
-                'date': entities.get('date'),
-                'sentiment': entities.get('sentiment'),
-                'summary': entities.get('summary'),
-                'discussion_topics': entities.get('discussion_topics'),
-                'products_discussed': entities.get('products_discussed'),
-            }
+        form_interaction_id = tool_data.get('interaction_id')
+        if not form_interaction_id and tool_data.get('interactions'):
+            form_interaction_id = tool_data['interactions'][0].get('id')
+        hcp_name = entities.get('hcp_name') or tool_data.get('hcp_name') or tool_data.get('created_hcp_name')
+
+        if tool_name == 'CreateHCP':
+            updated_form = {'hcp_name': hcp_name}
+        elif form_interaction_id:
+            form_data = await _fetch_form_data(session, form_interaction_id)
+            if form_data:
+                updated_form = form_data
+            elif hcp_name:
+                updated_form = {'hcp_name': hcp_name}
         elif hcp_name:
-            updated_form['hcp_name'] = hcp_name
+            updated_form = {'hcp_name': hcp_name}
 
     raw_response = result.get('assistant_response', 'I processed your request.')
     safe_response = sanitize_llm_output(raw_response)

@@ -22,7 +22,9 @@ def _normalize_intent(raw: str) -> str:
     cleaned = cleaned.replace('retrievehistory', 'retrieve_history')
     cleaned = cleaned.replace('suggestaction', 'suggest_action')
     cleaned = cleaned.replace('generatesummary', 'generate_summary')
-    if cleaned in {'log_interaction', 'edit_interaction', 'retrieve_history', 'suggest_action', 'generate_summary', 'general'}:
+    cleaned = cleaned.replace('createhcp', 'create_hcp')
+    valid = {'log_interaction', 'edit_interaction', 'retrieve_history', 'suggest_action', 'generate_summary', 'create_hcp', 'general'}
+    if cleaned in valid:
         return cleaned
     return ''
 
@@ -40,6 +42,12 @@ _LOG_KEYWORDS = {
     'retrieve_history': ('what did we discuss', 'show me the history', 'previous interactions', 'last time with'),
     'suggest_action': ('what should i', 'next best action', 'next step', 'recommend'),
     'generate_summary': ('summarize', 'summary of', 'give me a summary'),
+    'create_hcp': (
+        'create a new entry for', 'create a new hcp', 'add a doctor',
+        'register a new hcp', 'register a new doctor',
+        'create a new entry for dr', 'add dr', 'add doctor',
+        'new hcp entry', 'new doctor entry',
+    ),
 }
 
 
@@ -60,17 +68,21 @@ async def intent_detection_node(state: GraphState) -> dict:
     prompt = f"""You are a CRM intent classifier. Output EXACTLY ONE label. No explanation. No punctuation.
 
 Rules (in order of priority):
-1. If the user says they want to LOG, RECORD, or SAVE an interaction or meeting -> log_interaction
-2. If the user mentions meeting an HCP/doctor, discussing products, or sharing materials -> log_interaction
-3. If the user wants to CHANGE, UPDATE, or MODIFY an existing interaction -> edit_interaction
-4. If the user wants to SEE or RETRIEVE past interactions -> retrieve_history
-5. If the user wants a SUGGESTION or RECOMMENDATION -> suggest_action
-6. If the user wants a SUMMARY -> generate_summary
-7. If the message is a general greeting or unrelated to CRM -> general
+1. If the user wants to CREATE, ADD, or REGISTER a new HCP/doctor/profile -> create_hcp
+2. If the user says they want to LOG, RECORD, or SAVE an interaction or meeting -> log_interaction
+3. If the user mentions meeting an HCP/doctor, discussing products, or sharing materials -> log_interaction
+4. If the user wants to CHANGE, UPDATE, or MODIFY an existing interaction -> edit_interaction
+5. If the user wants to SEE or RETRIEVE past interactions -> retrieve_history
+6. If the user wants a SUGGESTION or RECOMMENDATION -> suggest_action
+7. If the user wants a SUMMARY -> generate_summary
+8. If the message is a general greeting or unrelated to CRM -> general
 
-Valid labels: log_interaction, edit_interaction, retrieve_history, suggest_action, generate_summary, general
+Valid labels: log_interaction, edit_interaction, retrieve_history, suggest_action, generate_summary, create_hcp, general
 
 Examples:
+"Create a new entry for Dr. Smith" -> create_hcp
+"Add Dr. Jones to the CRM" -> create_hcp
+"Register a new HCP named Dr. Lee" -> create_hcp
 "I met with Dr. Smith today" -> log_interaction
 "Log a new HCP interaction" -> log_interaction
 "Change the outcome of my last meeting" -> edit_interaction
